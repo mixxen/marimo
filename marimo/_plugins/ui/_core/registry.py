@@ -194,8 +194,11 @@ class UIElementRegistry:
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
+                # fallback when no event loop is running
                 ctx.function_registry.delete(object_id)
             else:
+                # schedule deletion on the next event-loop cycle to avoid
+                # race conditions with in-flight RPCs
                 loop.call_soon(ctx.function_registry.delete, object_id)
 
         if object_id in self._bindings:

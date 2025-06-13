@@ -1,6 +1,7 @@
 # Copyright 2024 Marimo. All rights reserved.
 from __future__ import annotations
 
+import asyncio
 import sys
 import weakref
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
@@ -190,7 +191,12 @@ class UIElementRegistry:
         except ContextNotInitializedError:
             pass
         else:
-            ctx.function_registry.delete(namespace=object_id)
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                ctx.function_registry.delete(object_id)
+            else:
+                loop.call_soon(ctx.function_registry.delete, object_id)
 
         if object_id in self._bindings:
             del self._bindings[object_id]

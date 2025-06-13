@@ -1,10 +1,17 @@
 # Copyright 2024 Marimo. All rights reserved.
 from __future__ import annotations
 
+import asyncio
+from typing import TYPE_CHECKING
+
 from marimo import ui
 from marimo._runtime.context import get_context
+from marimo._runtime.requests import FunctionCallRequest
 from marimo._runtime.runtime import Kernel
 from tests.conftest import ExecReqProvider
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 async def test_cached_element_still_registered(
@@ -190,3 +197,36 @@ async def test_dont_delete_element_with_wrong_python_id(
     # If the Python id doesn't match, don't delete the object.
     get_context().ui_element_registry.delete(s._id, -1)
     assert get_context().ui_element_registry.get_object(s._id) == s
+
+
+async def test_delete_is_async(
+    k: Kernel, exec_req: ExecReqProvider, tmp_path: Path
+) -> None:
+    await k.run(
+        [
+            exec_req.get("import marimo as mo"),
+            exec_req.get(f"fb = mo.ui.file_browser('{tmp_path}')"),
+        ]
+    )
+
+    fb = k.globals["fb"]
+    ctx = get_context()
+    assert ctx.function_registry.get_function(fb._id, "list_directory")
+
+    ctx.ui_element_registry.delete(fb._id, id(fb))
+
+    request = FunctionCallRequest(
+        function_call_id="test1",
+        namespace=fb._id,
+        function_name="list_directory",
+        args={"path": str(tmp_path)},
+    )
+    status, _, found = await k.function_call_request(request)
+    assert status.code == "ok"
+    assert found
+
+    await asyncio.sleep(0)
+
+    status, _, found = await k.function_call_request(request)
+    assert status.code == "error"
+    assert not found
